@@ -32,26 +32,25 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginBottom="8dp"
-        android:weightSum="3">
+        android:layout_marginBottom="4dp"
+        android:weightSum="4">
 
         <Button
             android:id="@+id/recognize_mic"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_weight="2"
             android:layout_marginRight="4dp"
             android:text="🎤 开始录音" />
 
-        <ToggleButton
-            android:id="@+id/pause"
+        <Button
+            android:id="@+id/btn_pick_file"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginLeft="4dp"
             android:layout_marginRight="4dp"
-            android:textOff="⏸ 暂停"
-            android:textOn="▶ 继续" />
+            android:text="📂 文件" />
 
         <Button
             android:id="@+id/btn_recordings"
@@ -59,8 +58,17 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginLeft="4dp"
-            android:text="📂 录音" />
+            android:text="📁 录音" />
     </LinearLayout>
+
+    <ToggleButton
+        android:id="@+id/pause"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:textOff="⏸ 暂停"
+        android:textOn="▶ 继续"
+        android:enabled="false" />
 
     <!-- 识别文本输出 -->
     <TextView

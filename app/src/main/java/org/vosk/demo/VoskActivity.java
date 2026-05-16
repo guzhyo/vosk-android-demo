@@ -62,10 +62,13 @@ public class VoskActivity extends Activity {
     private Button micBtn;
     private ToggleButton pauseBtn;
     private Button recordingsBtn;
+    private Button pickFileBtn;
+    private static final int REQUEST_PICK_AUDIO = 100;
 
     // Vosk
     private Model model;
     private Recognizer recognizer;
+    private org.vosk.android.SpeechService speechService;
     private String currentModelId = "vosk-model-small-cn-0.22";
 
     // Recording
@@ -106,12 +109,19 @@ public class VoskActivity extends Activity {
         micBtn = findViewById(R.id.recognize_mic);
         pauseBtn = findViewById(R.id.pause);
         recordingsBtn = findViewById(R.id.btn_recordings);
+        pickFileBtn = findViewById(R.id.btn_pick_file);
         modelSelector = findViewById(R.id.model_selector);
         Button downloadBtn = findViewById(R.id.download_models);
 
         micBtn.setOnClickListener(v -> toggleRecording());
-        pauseBtn.setOnCheckedChangeListener((v, checked) -> { /* pause is UI only */ });
+        pauseBtn.setEnabled(false);
+        pauseBtn.setOnCheckedChangeListener((v, checked) -> {
+            if (speechService != null) {
+                speechService.setPause(checked);
+            }
+        });
         recordingsBtn.setOnClickListener(v -> showRecordingsDialog());
+        pickFileBtn.setOnClickListener(v -> pickAudioFile());
         downloadBtn.setOnClickListener(v -> showModelChooser());
 
         modelSelector.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
@@ -341,7 +351,6 @@ public class VoskActivity extends Activity {
         recordFile = new File(getRecordingsDir(), ts + ".wav");
         try {
             recognizer = new Recognizer(model, 16000.0f);
-            recognizer.setWords(true);
         } catch (IOException e) {
             statusView.setText("初始化识别器失败：" + e.getMessage());
             return;
@@ -351,6 +360,8 @@ public class VoskActivity extends Activity {
         resultView.setText("");
         micBtn.setText("⏹ 停止录音");
         statusView.setText("🎤 录音中···");
+        pauseBtn.setEnabled(true);
+        pauseBtn.setChecked(false);
 
         final int SAMPLE_RATE = 16000;
         final int BUFFER_SIZE = AudioRecord.getMinBufferSize(SAMPLE_RATE,
@@ -419,6 +430,8 @@ public class VoskActivity extends Activity {
                         resultView.setText("📝 " + displayText + "\n\n📁 已保存：" + recordFile.getName());
                         statusView.setText("录音完成 ✓ 共 " + (totalBytes[0] - 44) / 32000 + " 秒");
                         micBtn.setText("🎤 开始录音");
+                        pauseBtn.setEnabled(false);
+                        pauseBtn.setChecked(false);
                     });
                 }
             });
@@ -445,6 +458,8 @@ public class VoskActivity extends Activity {
             recognizer = null;
         }
         micBtn.setText("🎤 开始录音");
+        pauseBtn.setEnabled(false);
+        pauseBtn.setChecked(false);
     }
 
     /** 写入标准 WAV 文件头（覆盖前44字节） */
@@ -476,25 +491,59 @@ public class VoskActivity extends Activity {
     private static final byte[] fmt_ = "fmt ".getBytes();
     private static final byte[] data = "data".getBytes();
 
-    /** 从 JSON 中提取纯文本，并根据词间间隔加标点 */
+    /** 从 JSON 中提取纯文本，并根据规则加标点 */
     private String extractText(String json) {
         if (json == null || json.isEmpty()) return "";
         try {
-            // 先尝试解析带时间戳的 result 格式（finalResult）
+            // 先尝试解析带时间戳的 result 格式（finalResult 带 setWords）
             int resultIdx = json.indexOf("\"result\"");
             if (resultIdx >= 0) {
                 return extractWithPunctuation(json);
             }
-            // 检查是否有 "text" 字段（finalResult 无 result 时）
+            // 检查 "text" 字段（finalResult）
             String text = getJsonString(json, "text");
-            if (!text.isEmpty()) return text;
-            // 检查 "partial" 字段（partialResult）
+            if (!text.isEmpty()) return addPunctuation(text);
+            // 检查 "partial" 字段（partialResult）— 实时显示，不加标点
             String partial = getJsonString(json, "partial");
             if (!partial.isEmpty()) return partial;
             return "";
         } catch (Exception e) {
             return "";
         }
+    }
+
+    /** 给纯文本加标点：基于常见语气词和句尾模式 */
+    private String addPunctuation(String text) {
+        if (text == null || text.trim().isEmpty()) return text;
+        String s = text.trim();
+        // 按空格分词
+        String[] words = s.split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < words.length; i++) {
+            String w = words[i];
+            sb.append(w);
+            // 最后一句末尾加句号
+            if (i == words.length - 1) {
+                char last = sb.charAt(sb.length() - 1);
+                if (last != '。' && last != '？' && last != '！' && last != '，') {
+                    sb.append('。');
+                }
+            } else {
+                // 语气词后加逗号/问号
+                if (w.endsWith("吗") || w.endsWith("么") || w.endsWith("呢") || w.endsWith("吧")) {
+                    sb.append('？');
+                } else if (w.endsWith("的") || w.endsWith("了") || w.endsWith("啊") || w.endsWith("哦")) {
+                    sb.append('，');
+                } else if (w.endsWith("哈") || w.endsWith("呀")) {
+                    sb.append('，');
+                } else if (w.length() <= 1) {
+                    // 单字词后面一般不加标点
+                }
+                // 句尾加空格
+                sb.append(' ');
+            }
+        }
+        return sb.toString().trim();
     }
 
     /** 从 JSON 中提取指定 key 的字符串值（去空格） */
@@ -583,6 +632,103 @@ public class VoskActivity extends Activity {
     /** 从 JSON 中直接提取 text 字段（无标点） */
     private String fallbackText(String json) {
         return getJsonString(json, "text");
+    }
+
+    // ───────────────────────── 文件选择与转录 ─────────────────────────
+
+    /** 打开系统文件选择器选音频文件 */
+    private void pickAudioFile() {
+        if (model == null) {
+            Toast.makeText(this, "模型未就绪", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Android 13+ 用 OPEN_DOCUMENT，兼容旧版本用 GET_CONTENT
+        android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+        intent.setType("audio/*");
+        // 也允许选择 wav、mp3、m4a、ogg
+        String[] mimeTypes = {"audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/x-wav"};
+        intent.putExtra(android.content.Intent.EXTRA_MIME_TYPES, mimeTypes);
+        startActivityForResult(intent, REQUEST_PICK_AUDIO);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_PICK_AUDIO && resultCode == RESULT_OK && data != null) {
+            android.net.Uri uri = data.getData();
+            if (uri != null) {
+                transcribeUri(uri);
+            }
+        }
+    }
+
+    /** 识别指定的音频文件 URI */
+    private void transcribeUri(final android.net.Uri uri) {
+        resultView.setText("正在识别文件···");
+        statusView.setText("识别中···");
+
+        new AsyncTask<Void, Void, String>() {
+            @Override protected String doInBackground(Void... v) {
+                Recognizer rec = null;
+                try {
+                    rec = new Recognizer(model, 16000.0f);
+                } catch (IOException e) {
+                    return "初始化识别器失败";
+                }
+                // 读取文件内容，保存到临时文件后识别
+                try {
+                    // 复制到临时文件
+                    java.io.InputStream is = getContentResolver().openInputStream(uri);
+                    File tmpFile = new File(getCacheDir(), "tmp_transcribe.wav");
+                    java.io.FileOutputStream fos = new java.io.FileOutputStream(tmpFile);
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = is.read(buf)) != -1) fos.write(buf, 0, n);
+                    fos.close();
+                    is.close();
+
+                    // 读取全部字节
+                    java.io.FileInputStream fis = new java.io.FileInputStream(tmpFile);
+                    byte[] data = new byte[(int)tmpFile.length()];
+                    fis.read(data); fis.close();
+                    tmpFile.delete();
+
+                    // 判断是否是 WAV 格式（前4字节 RIFF）
+                    boolean isWav = data.length > 44
+                            && data[0] == 'R' && data[1] == 'I'
+                            && data[2] == 'F' && data[3] == 'F';
+                    int offset = isWav ? 44 : 0;
+
+                    int chunkSize = 8000;
+                    byte[] chunk = new byte[chunkSize];
+                    while (offset < data.length) {
+                        int copyLen = Math.min(chunkSize, data.length - offset);
+                        System.arraycopy(data, offset, chunk, 0, copyLen);
+                        rec.acceptWaveForm(chunk, copyLen);
+                        offset += copyLen;
+                    }
+                    String result = rec.getFinalResult();
+                    rec = null;
+                    String text = getJsonString(result, "text");
+                    if (text.isEmpty()) text = getJsonString(result, "partial");
+                    if (!text.isEmpty()) {
+                        return addPunctuation(text);
+                    }
+                    return "（未识别到语音）";
+                } catch (Exception e) {
+                    return "识别失败：" + e.getMessage();
+                }
+            }
+            @Override protected void onPostExecute(String text) {
+                if (text != null) {
+                    resultView.setText("📝 " + text + "\n\n📂 来源：外部文件");
+                    statusView.setText("文件转录完成 ✓");
+                } else {
+                    statusView.setText("识别失败");
+                }
+            }
+        }.execute();
     }
 
     // ───────────────────────── 录音文件管理 ─────────────────────────
