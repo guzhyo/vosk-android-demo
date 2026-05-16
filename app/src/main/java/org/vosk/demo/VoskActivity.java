@@ -480,14 +480,27 @@ public class VoskActivity extends Activity {
     private String extractText(String json) {
         if (json == null || json.isEmpty()) return "";
         try {
-            // 先尝试解析带时间戳的 result 格式
-            // 格式: {"result":[{"word":"你","start":0.5,"end":0.7},...],"text":"你 好 吗"}
+            // 先尝试解析带时间戳的 result 格式（finalResult）
             int resultIdx = json.indexOf("\"result\"");
             if (resultIdx >= 0) {
                 return extractWithPunctuation(json);
             }
-            // 不支持 setWords 的 recognizer 直接取 text
-            int idx = json.indexOf("\"text\"");
+            // 检查是否有 "text" 字段（finalResult 无 result 时）
+            String text = getJsonString(json, "text");
+            if (!text.isEmpty()) return text;
+            // 检查 "partial" 字段（partialResult）
+            String partial = getJsonString(json, "partial");
+            if (!partial.isEmpty()) return partial;
+            return "";
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** 从 JSON 中提取指定 key 的字符串值（去空格） */
+    private String getJsonString(String json, String key) {
+        try {
+            int idx = json.indexOf("\"" + key + "\"");
             if (idx < 0) return "";
             int colon = json.indexOf(':', idx);
             int start = json.indexOf('"', colon + 1);
@@ -495,7 +508,7 @@ public class VoskActivity extends Activity {
             if (start < 0 || end < 0) return "";
             return json.substring(start + 1, end);
         } catch (Exception e) {
-            return json;
+            return "";
         }
     }
 
@@ -569,17 +582,7 @@ public class VoskActivity extends Activity {
 
     /** 从 JSON 中直接提取 text 字段（无标点） */
     private String fallbackText(String json) {
-        try {
-            int idx = json.indexOf("\"text\"");
-            if (idx < 0) return "";
-            int colon = json.indexOf(':', idx);
-            int start = json.indexOf('"', colon + 1);
-            int end = json.indexOf('"', start + 1);
-            if (start < 0 || end < 0) return "";
-            return json.substring(start + 1, end);
-        } catch (Exception e) {
-            return "";
-        }
+        return getJsonString(json, "text");
     }
 
     // ───────────────────────── 录音文件管理 ─────────────────────────
