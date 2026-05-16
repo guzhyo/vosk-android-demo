@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="model_names">
+        <item>英文 (English)</item>
+        <item>中文</item>
+    </string-array>
+</resources>

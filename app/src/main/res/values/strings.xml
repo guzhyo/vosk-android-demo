@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">语音识别</string>
+    <string name="recognize_file">识别文件</string>
+    <string name="recognize_microphone">开始录音</string>
+    <string name="stop_microphone">停止录音</string>
+    <string name="preparing">正在准备识别器···\n</string>
+    <string name="ready">准备就绪\n</string>
+    <string name="failed">初始化失败 %s\n</string>
+    <string name="starting">正在识别···\n</string>
+    <string name="say_something">请说话···\n</string>
+    <string name="stop_file">停止文件</string>
+    <string name="pause">暂停</string>
+    <string name="continueRecognition">继续</string>
+
+    <!-- 模型选择 -->
+    <string name="model_en">英文 (English)</string>
+    <string name="model_cn">中文</string>
+
+</resources>
