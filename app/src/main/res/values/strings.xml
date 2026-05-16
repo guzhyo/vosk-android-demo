@@ -2,16 +2,13 @@
 <resources>
 
     <string name="app_name">语音识别</string>
-    <string name="recognize_file">识别文件</string>
-    <string name="recognize_microphone">开始录音</string>
-    <string name="stop_microphone">停止录音</string>
-    <string name="preparing">正在准备···\n</string>
-    <string name="ready">准备就绪\n</string>
-    <string name="failed">初始化失败 %s\n</string>
-    <string name="starting">正在识别···\n</string>
-    <string name="say_something">请说话···\n</string>
-    <string name="stop_file">停止文件</string>
-    <string name="pause">暂停</string>
-    <string name="continueRecognition">继续</string>
+    <string name="preparing">正在准备···</string>
+    <string name="ready">就绪</string>
+    <string name="failed">初始化失败：%s</string>
+    <string name="say_something">🎤 正在录音，请说话···</string>
+    <string name="pause">⏸ 暂停</string>
+    <string name="continueRecognition">▶ 继续</string>
+    <string name="btn_start_record">🎤 开始录音</string>
+    <string name="btn_stop_record">⏹ 停止录音</string>
 
 </resources>
