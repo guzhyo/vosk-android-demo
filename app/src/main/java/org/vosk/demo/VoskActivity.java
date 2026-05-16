@@ -341,6 +341,7 @@ public class VoskActivity extends Activity {
         recordFile = new File(getRecordingsDir(), ts + ".wav");
         try {
             recognizer = new Recognizer(model, 16000.0f);
+            recognizer.setWords(true);
         } catch (IOException e) {
             statusView.setText("初始化识别器失败：" + e.getMessage());
             return;
@@ -475,11 +476,17 @@ public class VoskActivity extends Activity {
     private static final byte[] fmt_ = "fmt ".getBytes();
     private static final byte[] data = "data".getBytes();
 
-    /** 从 JSON 中提取纯文本部分 */
+    /** 从 JSON 中提取纯文本，并根据词间间隔加标点 */
     private String extractText(String json) {
         if (json == null || json.isEmpty()) return "";
         try {
-            // 简单解析：找 "text" : "..."
+            // 先尝试解析带时间戳的 result 格式
+            // 格式: {"result":[{"word":"你","start":0.5,"end":0.7},...],"text":"你 好 吗"}
+            int resultIdx = json.indexOf("\"result\"");
+            if (resultIdx >= 0) {
+                return extractWithPunctuation(json);
+            }
+            // 不支持 setWords 的 recognizer 直接取 text
             int idx = json.indexOf("\"text\"");
             if (idx < 0) return "";
             int colon = json.indexOf(':', idx);
@@ -489,6 +496,89 @@ public class VoskActivity extends Activity {
             return json.substring(start + 1, end);
         } catch (Exception e) {
             return json;
+        }
+    }
+
+    /** 从带时间戳的 result 数组中提取文字并加标点
+     *  间隔 > 0.8s → 句号，> 0.4s → 逗号 */
+    private String extractWithPunctuation(String json) {
+        try {
+            // 解析 result 数组中的 words
+            // 从 "result":[{...},{...}]
+            int arrStart = json.indexOf("[{", json.indexOf("\"result\""));
+            int arrEnd = json.lastIndexOf("}]");
+            if (arrStart < 0 || arrEnd < 0) return fallbackText(json);
+            String arr = json.substring(arrStart, arrEnd + 2);
+
+            StringBuilder sb = new StringBuilder();
+            double lastEnd = 0;
+            boolean first = true;
+
+            int pos = 0;
+            while (pos < arr.length()) {
+                // 找 "word":"xxx"
+                int wStart = arr.indexOf("\"word\":\"", pos);
+                if (wStart < 0) break;
+                wStart += 8;
+                int wEnd = arr.indexOf('"', wStart);
+                if (wEnd < 0) break;
+                String word = arr.substring(wStart, wEnd);
+
+                // 找 "start":xxx
+                int sStart = arr.indexOf("\"start\":", wEnd);
+                if (sStart < 0) break;
+                sStart += 7;
+                int sEnd = arr.indexOf(',', sStart);
+                if (sEnd < 0) sEnd = arr.indexOf('}', sStart);
+                if (sEnd < 0) break;
+                double startTime = Double.parseDouble(arr.substring(sStart, sEnd).trim());
+
+                if (!first) {
+                    double gap = startTime - lastEnd;
+                    if (gap > 0.8) {
+                        sb.append("。");
+                    } else if (gap > 0.4) {
+                        sb.append("，");
+                    } else {
+                        sb.append("");
+                    }
+                }
+                sb.append(word);
+                first = false;
+
+                // 找 "end":xxx
+                int eStart = arr.indexOf("\"end\":", sEnd);
+                if (eStart < 0) break;
+                eStart += 5;
+                int eEnd = arr.indexOf('}', eStart);
+                if (eEnd < 0) break;
+                lastEnd = Double.parseDouble(arr.substring(eStart, eEnd).trim());
+
+                pos = eEnd + 1;
+            }
+            String result = sb.toString().trim();
+            // 末尾加句号
+            if (!result.isEmpty() && !result.endsWith("。") && !result.endsWith("？") && !result.endsWith("！")) {
+                result += "。";
+            }
+            return result;
+        } catch (Exception e) {
+            return fallbackText(json);
+        }
+    }
+
+    /** 从 JSON 中直接提取 text 字段（无标点） */
+    private String fallbackText(String json) {
+        try {
+            int idx = json.indexOf("\"text\"");
+            if (idx < 0) return "";
+            int colon = json.indexOf(':', idx);
+            int start = json.indexOf('"', colon + 1);
+            int end = json.indexOf('"', start + 1);
+            if (start < 0 || end < 0) return "";
+            return json.substring(start + 1, end);
+        } catch (Exception e) {
+            return "";
         }
     }
 
