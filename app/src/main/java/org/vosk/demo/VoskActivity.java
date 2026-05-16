@@ -13,10 +13,8 @@ import android.media.AudioRecord;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
 import android.media.AudioAttributes;
-import android.media.AudioManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.os.Environment;
 import android.text.method.ScrollingMovementMethod;
 import android.view.View;
 import android.widget.AdapterView;
@@ -31,10 +29,8 @@ import org.vosk.LibVosk;
 import org.vosk.LogLevel;
 import org.vosk.Model;
 import org.vosk.Recognizer;
-import org.vosk.android.RecognitionListener;
 
 import java.io.BufferedInputStream;
-import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -46,8 +42,6 @@ import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.Locale;
 import java.util.zip.ZipEntry;
@@ -345,7 +339,12 @@ public class VoskActivity extends Activity {
         // 创建输出文件
         String ts = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
         recordFile = new File(getRecordingsDir(), ts + ".wav");
-        recognizer = new Recognizer(model, 16000.0f);
+        try {
+            recognizer = new Recognizer(model, 16000.0f);
+        } catch (IOException e) {
+            statusView.setText("初始化识别器失败：" + e.getMessage());
+            return;
+        }
         isRecording = true;
 
         resultView.setText("");
@@ -575,7 +574,12 @@ public class VoskActivity extends Activity {
         if (!txtFile.exists() && model != null) {
             new AsyncTask<Void, Void, String>() {
                 @Override protected String doInBackground(Void... v) {
-                    Recognizer rec = new Recognizer(model, 16000.0f);
+                    Recognizer rec = null;
+                    try {
+                        rec = new Recognizer(model, 16000.0f);
+                    } catch (IOException e) {
+                        return "初始化识别器失败";
+                    }
                     try {
                         FileInputStream fis = new FileInputStream(file);
                         byte[] buf = new byte[(int)file.length()];
@@ -635,7 +639,12 @@ public class VoskActivity extends Activity {
             new AsyncTask<Void, Void, String>() {
                 @Override protected String doInBackground(Void... v) {
                     if (model == null) return "模型未就绪";
-                    Recognizer rec = new Recognizer(model, 16000.0f);
+                    Recognizer rec = null;
+                    try {
+                        rec = new Recognizer(model, 16000.0f);
+                    } catch (IOException e) {
+                        return "初始化识别器失败";
+                    }
                     try {
                         FileInputStream fis = new FileInputStream(file);
                         byte[] buf = new byte[(int)file.length()];
