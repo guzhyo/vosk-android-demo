@@ -537,6 +537,19 @@ public class VoskActivity extends Activity {
     }
 
     private void playRecording(File file) {
+        // 先检查是否有已保存的 .txt，有的话直接显示
+        File txtFile = new File(file.getAbsolutePath().replace(".wav", ".txt"));
+        if (txtFile.exists()) {
+            try {
+                FileInputStream fis = new FileInputStream(txtFile);
+                byte[] buf = new byte[(int)txtFile.length()];
+                fis.read(buf); fis.close();
+                resultView.setText("📝 " + new String(buf));
+                statusView.setText("📄 已加载识别文本");
+            } catch (Exception e) {}
+        }
+
+        // 播放录音
         if (mediaPlayer != null) {
             mediaPlayer.release();
             mediaPlayer = null;
@@ -556,6 +569,49 @@ public class VoskActivity extends Activity {
             });
         } catch (Exception e) {
             Toast.makeText(this, "播放失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+
+        // 如果没有 .txt，播放同时在后台识别
+        if (!txtFile.exists() && model != null) {
+            new AsyncTask<Void, Void, String>() {
+                @Override protected String doInBackground(Void... v) {
+                    Recognizer rec = new Recognizer(model, 16000.0f);
+                    try {
+                        FileInputStream fis = new FileInputStream(file);
+                        byte[] buf = new byte[(int)file.length()];
+                        fis.read(buf); fis.close();
+                        int offset = 44;
+                        int chunkSize = 8000;
+                        byte[] chunk = new byte[chunkSize];
+                        while (offset < buf.length) {
+                            int copyLen = Math.min(chunkSize, buf.length - offset);
+                            System.arraycopy(buf, offset, chunk, 0, copyLen);
+                            rec.acceptWaveForm(chunk, copyLen);
+                            offset += copyLen;
+                        }
+                        String result = rec.getFinalResult();
+                        rec = null;
+                        String text = extractText(result);
+                        if (!text.isEmpty()) {
+                            try {
+                                FileOutputStream fos = new FileOutputStream(txtFile);
+                                fos.write(text.getBytes()); fos.close();
+                            } catch (Exception e) {}
+                        }
+                        return text;
+                    } catch (Exception e) {
+                        return "识别失败：" + e.getMessage();
+                    }
+                }
+                @Override protected void onPostExecute(String text) {
+                    if (text != null && !text.isEmpty() && !text.startsWith("识别失败")) {
+                        resultView.setText("📝 " + text);
+                        statusView.setText("▶ 播放中 · 识别完成 ✓");
+                    } else if (text != null) {
+                        statusView.setText(text);
+                    }
+                }
+            }.execute();
         }
     }
 
